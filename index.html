@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador HVDC LCC frente a VSC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap" rel="stylesheet">
+<style>
+/* Layout: controles comunes arriba; dos columnas gemelas (LCC | VSC) con enlace, V×I=P, puente y formas de onda. */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#18222d; --muted:#5b6876; --rule:#d5dbe1;
+  --accent:#0b6a8f; --accent-soft:#dcedf4; --dc:#6b3fa0;
+  --ok:#2c7a4b; --warn:#b26a00; --crit:#c0342b; --off:#9aa5b0;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300;
+  --display:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11171d; --surface:#1a222b; --ink:#e6ebf0; --muted:#97a4b1; --rule:#2e3944;
+    --accent:#5cb8dc; --accent-soft:#1d3a48; --dc:#b99be6;
+    --ok:#5fbf85; --warn:#e3a13c; --crit:#f0746a; --off:#5d6a77;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#0ca30c;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11171d; --surface:#1a222b; --ink:#e6ebf0; --muted:#97a4b1; --rule:#2e3944;
+  --accent:#5cb8dc; --accent-soft:#1d3a48; --dc:#b99be6;
+  --ok:#5fbf85; --warn:#e3a13c; --crit:#f0746a; --off:#5d6a77;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#0ca30c;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1280px;margin:0 auto;padding:20px 16px 40px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;justify-content:space-between}
+h1{font-family:var(--display);font-size:26px;font-weight:600;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-size:19px;font-weight:600;margin:0}
+h3{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin:0;color:var(--muted)}
+.formula{font-family:var(--mono);font-size:14px;color:var(--muted)}
+.formula b{color:var(--ink);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 16px}
+.ctl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 28px}
+.cgroup{display:flex;flex-direction:column;gap:8px;min-width:0}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center}
+.row label{font-size:14px}
+.row output{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--accent);font-weight:600}
+.row input[type=range]{grid-column:1/-1}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:22px}
+.seg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px}
+.seg>span{margin-right:4px}
+button{font:inherit;font-size:13px;padding:6px 12px;border-radius:4px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);cursor:pointer}
+button:hover{background:var(--accent-soft)}
+button.primary,.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.seg button{padding:3px 9px;font-family:var(--mono);font-size:12px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.tech{display:flex;flex-direction:column;gap:12px;min-width:0}
+.tech header{align-items:baseline}
+.tech .sub{font-size:13px;color:var(--muted)}
+.tech svg{width:100%;height:auto;display:block}
+.note{font-size:14px;padding:8px 12px;border-radius:4px;background:var(--accent-soft);border-left:4px solid var(--accent);margin:0}
+.note.warn{border-left-color:var(--warn)} .note.crit{border-left-color:var(--crit)}
+/* V × I = P */
+.prod{display:grid;grid-template-columns:auto 1fr auto;gap:5px 10px;align-items:center;font-size:13px}
+.prod .k{font-family:var(--mono);font-weight:600}
+.prod .v{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;min-width:9ch}
+.track{position:relative;height:12px;background:var(--bg);border-radius:6px;overflow:hidden}
+.track::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--muted)}
+.track i{position:absolute;top:1px;bottom:1px;border-radius:4px}
+/* cadena de control */
+.chain{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;counter-reset:c}
+.chain li{counter-increment:c;border:1px solid var(--rule);border-radius:4px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.chain .k{font-size:11px;color:var(--muted)}
+.chain .k::before{content:counter(c) ". ";font-family:var(--mono)}
+.chain .v{font-family:var(--mono);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+/* válvulas */
+.valves{display:grid;grid-template-columns:minmax(0,6fr) minmax(0,7fr);gap:12px;align-items:start}
+.charts{display:flex;flex-direction:column;gap:4px;min-width:0}
+.charts h4{font-size:12px;font-weight:600;margin:4px 0 0}
+.charts svg{touch-action:none;cursor:crosshair}
+.clegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted)}
+.clegend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
+.clegend i.dash{border-top-style:dashed}
+.readout{font-family:var(--mono);font-size:12px;color:var(--muted);min-height:36px;font-variant-numeric:tabular-nums}
+.gridl{stroke:var(--rule);stroke-width:1}
+.zero{stroke:var(--muted);stroke-width:1}
+.axt{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.dl{font-family:var(--body);font-size:10px;font-weight:600;fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+.cross{stroke:var(--ink);stroke-width:1;stroke-dasharray:2 3}
+.shade{fill:var(--accent-soft)}
+/* esquemas */
+.t{font-family:var(--body);font-size:12px;fill:var(--ink)}
+.tb{font-family:var(--body);font-size:12px;font-weight:600;fill:var(--ink)}
+.tm{font-family:var(--mono);font-size:12px;fill:var(--ink);font-weight:600}
+.ts{font-family:var(--body);font-size:11px;fill:var(--muted)}
+.box{fill:var(--surface);stroke:var(--muted);stroke-width:1.5}
+.conv{fill:var(--surface);stroke:var(--dc);stroke-width:2}
+.conv.view{stroke-width:3.5;fill:var(--accent-soft)}
+.wire{stroke:var(--muted);stroke-width:1.5;fill:none}
+.pole{stroke:var(--dc);stroke-width:3;fill:none}
+.flowdash{stroke:var(--surface);stroke-width:1.6;stroke-dasharray:3 13;fill:none;stroke-linecap:round}
+.flowdash.fwd{animation:fl 1.1s linear infinite}
+.flowdash.rev{animation:fl 1.1s linear infinite reverse}
+@keyframes fl{from{stroke-dashoffset:16}to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion: reduce){.flowdash{animation:none!important}}
+.leg{stroke:var(--rule);fill:none;stroke-linecap:round}
+.bar{stroke:var(--ink);stroke-width:3;fill:none}
+.vsym{fill:var(--surface);stroke:var(--muted);stroke-width:1.5}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.notes p{margin:6px 0 0;font-size:14px;color:var(--muted);max-width:65ch}
+@media (max-width:1000px){.cols{grid-template-columns:1fr}.ctl{grid-template-columns:1fr}}
+@media (max-width:560px){.valves{grid-template-columns:1fr}.chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Simulador HVDC: LCC frente a VSC</h1>
+    <div class="formula">En DC la potencia la fijan las válvulas: <b>P = V<sub>DC</sub> × I<sub>DC</sub></b> &nbsp;·&nbsp; dos enlaces de 1000 MW</div>
+  </header>
+
+  <section class="panel ctl" aria-label="Controles comunes">
+    <div class="cgroup">
+      <h3>Consigna del operador</h3>
+      <div class="row"><label for="set">Potencia de A hacia B</label><output id="seto"></output>
+        <input type="range" id="set" min="-1000" max="1000" step="25"></div>
+      <div class="seg" id="ramps" role="group" aria-label="Rampa"><span>Rampa</span></div>
+      <div class="presets"><button type="button" class="primary" id="rev">Invertir el flujo</button><button type="button" id="zero">Llevar a 0 MW</button><button type="button" id="full">+1000 MW</button></div>
+    </div>
+    <div class="cgroup">
+      <h3>Qué convertidor se ve por dentro</h3>
+      <div class="seg" id="views" role="group" aria-label="Estación vista"><span>Estación</span></div>
+      <div class="row"><label for="th">Instante del ciclo AC (ωt)</label><output id="tho"></output>
+        <input type="range" id="th" min="0" max="359" step="1"></div>
+      <div class="presets"><button type="button" id="play"></button></div>
+    </div>
+    <div class="cgroup">
+      <h3>Límites y red AC</h3>
+      <div class="row"><label for="ub">Tensión AC de la red B</label><output id="ubo"></output>
+        <input type="range" id="ub" min="70" max="100" step="1"></div>
+      <div class="row"><label for="q">Q del VSC en la estación vista</label><output id="qo"></output>
+        <input type="range" id="q" min="-600" max="600" step="25"></div>
+      <p class="hint">Q positiva: el convertidor entrega reactiva a su red. El LCC no puede elegirla: siempre consume.</p>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section class="panel tech" id="lcc" aria-label="Enlace LCC"></section>
+    <section class="panel tech" id="vsc" aria-label="Enlace VSC"></section>
+  </div>
+
+  <section class="notes">
+    <div class="panel"><h3>Cómo leerlo</h3>
+      <p>Invierte el flujo y compara las dos columnas. En el LCC la corriente DC no cambia de sentido: se invierte la polaridad de la tensión, y las válvulas conducen los mismos bloques en otro momento del ciclo. En el VSC la tensión DC se mantiene y es la corriente la que cruza por cero, también dentro de cada rama.</p></div>
+    <div class="panel"><h3>Qué calcula</h3>
+      <p>Puntos de operación en régimen permanente que siguen la rampa de la consigna. LCC: puente de 6 pulsos con ángulo de disparo α, solapamiento μ y margen de extinción γ. VSC: convertidor modular multinivel, con corriente de rama igual a un tercio de la DC más o menos la mitad de la corriente de fase.</p></div>
+    <div class="panel"><h3>Qué deja fuera</h3>
+      <p>Transitorios y lazos de control reales, armónicos y filtros, rizado de tensión, corrientes circulantes del MMC, cambiadores de tomas y los tiempos de espera que un LCC real necesita para invertir. Un LCC real usa puentes de 12 pulsos. Los parámetros son ilustrativos.</p></div>
+  </section>
+</div>
+
+<script>
+/* ---------- Modelo cuasi-estático de dos enlaces de 1000 MW ----------
+   LCC: monopolo de 500 kV y 2 kA, puentes de 6 pulsos.  VSC (MMC): ±320 kV, 1,5625 kA. */
+const D2R = Math.PI/180, R2D = 180/Math.PI;
+const LCC = {Vn:500, In:2, dx:0.06, R:0.02, Imin:0.1, aMin:5, gMin:15,
+             Vdio: 1/(Math.cos(15*D2R)-0.06)};           // α nominal 15°
+const VSC = {Vn:640, In:1.5625, R:0, X:0.15, m0:0.85, Smax:1.1,
+             Ipk: (4/3)*1.5625/0.85};                    // kA pico de fase a 1 pu
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+function lccBridge(vbr, Id, u){           // vbr: tensión del puente en el sentido de la corriente
+  const ca = clamp((vbr/LCC.Vdio + LCC.dx*Id)/u, -1, 1), alpha = Math.acos(ca)*R2D;
+  const mu = Math.acos(clamp(ca - 2*LCC.dx*Id/u, -1, 1))*R2D - alpha;
+  const phi = Math.acos(clamp((ca + Math.cos((alpha+mu)*D2R))/2, -1, 1));
+  return {alpha, mu, gamma:180-alpha-mu, Q: 1000*LCC.Vdio*u*Id*Math.sin(phi), rect: vbr>=0};
+}
+// p: referencia en pu (+ = de A hacia B). uB: tensión AC de la red B en pu.
+function lccState(p, uB=1){
+  const Id = Math.max(Math.abs(p), LCC.Imin), fwd = p>=0;
+  const uS = fwd?1:uB, uR = fwd?uB:1;
+  const vRect = LCC.Vdio*(uS*Math.cos(LCC.aMin*D2R) - LCC.dx*Id);
+  const vInv  = LCC.Vdio*(uR*Math.cos(LCC.gMin*D2R) - LCC.dx*Id) + LCC.R*Id;
+  const want = Math.abs(p)/Id, vs = Math.min(want, vRect, vInv);
+  const limited = vs < want-1e-6 ? (vInv<=vRect ? 'gamma' : 'alpha') : null;
+  const VA = fwd ? vs : -vs + LCC.R*Id, VB = fwd ? vs - LCC.R*Id : -vs;
+  const A = lccBridge(VA, Id, 1), B = lccBridge(-VB, Id, uB);
+  return {Id, VA, VB, P:(fwd?1:-1)*vs*Id, A, B, limited, fwd,
+          kV:VA*LCC.Vn, kA:Id*LCC.In, MW:(fwd?1:-1)*vs*Id*1000};
+}
+// Corriente de la válvula k (1..6) en kA. theta en grados; v_a = sen(theta).
+function lccValve(k, theta, br, IdkA){
+  const x = (((theta - (30 + br.alpha + 60*(k-1))) % 360) + 360) % 360, mu = br.mu;
+  const rise = y => { if(mu<1e-6) return 1;
+    const a=br.alpha*D2R; return (Math.cos(a)-Math.cos(a+y*D2R))/(Math.cos(a)-Math.cos(a+mu*D2R)); };
+  if(x < mu) return IdkA*rise(x);
+  if(x < 120) return IdkA;
+  if(x < 120+mu) return IdkA*(1-rise(x-120));
+  return 0;
+}
+const LCC_UP = [1,3,5], LCC_LO = [4,6,2];     // válvulas de las fases a, b, c
+
+// q: reactiva que la estación vista entrega a su red (pu). view: 'A' o 'B'.
+function vscState(p, q, uB=1, view='A'){
+  const pmax = VSC.Smax*Math.min(1,uB), pe = clamp(p, -pmax, pmax);
+  let Idc = pe; for(let i=0;i<4;i++) Idc = pe/(1 + VSC.R*Idc);      // B mantiene V_DC = 1 pu
+  const VA = 1 + VSC.R*Idc;
+  const st = (name) => { const u = name==='A'?1:uB, pac = name==='A' ? VA*Idc : -Idc;   // AC→DC
+    const qmax = Math.sqrt(Math.max(0,(VSC.Smax*u)**2 - pac*pac));
+    const qi = name===view ? clamp(q,-qmax,qmax) : 0;
+    const Ir = pac/u, Ii = qi/u;                    // fasor de corriente tomada de la red
+    const Vr = u + VSC.X*Ii, Vi = -VSC.X*Ir;        // Vc = u − jX·I
+    return {pac, q:qi, qmax, u, delta:Math.atan2(Vi,Vr)*R2D, amp:Math.hypot(Vr,Vi),
+            m:VSC.m0*Math.hypot(Vr,Vi), Ipk:Math.hypot(Ir,Ii)*VSC.Ipk, phiI:Math.atan2(Ii,Ir),
+            IdcExp:(name==='A'?Idc:-Idc)*VSC.In, qLimited: qi!==q && name===view}; };
+  return {Idc, VA, VB:1, P:VA*Idc, A:st('A'), B:st('B'), limited: pe!==p ? 'corriente' : null,
+          kV:VA*VSC.Vn, kA:Idc*VSC.In, MW:VA*Idc*1000};
+}
+// Corriente de rama (kA). ph: 0,1,2 = a,b,c. Positiva hacia la barra DC superior.
+function vscArm(upper, ph, theta, s){
+  const iac = s.Ipk*Math.sin((theta-120*ph)*D2R + s.phiI);
+  return s.IdcExp/3 + (upper?1:-1)*iac/2;
+}
+
+
+/* ---------- Estado ---------- */
+const S = {set:1000, ramp:300, uB:100, q:0, view:'A', theta:40,
+           playing: !matchMedia('(prefers-reduced-motion: reduce)').matches};
+let pRef = 1000, hover = false;
+const RAMPS = [[100,'100 MW/s'],[300,'300 MW/s'],[1000,'1000 MW/s'],[0,'escalón']];
+const SPEED = 60;                       // grados eléctricos por segundo (cámara lenta)
+const HIST = {dt:0.05, n:400, l:{v:[],i:[],p:[]}, v:{v:[],i:[],p:[]}};
+const PH = ['a','b','c'], PC = ['s1','s2','s3'];
+
+const $ = id => document.getElementById(id);
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs={}, parent, text){ const e=document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]); if(text!==undefined) e.textContent=text; if(parent) parent.appendChild(e); return e; }
+const fmt = (v,d=0) => { const r = Math.abs(v) < 0.5*Math.pow(10,-d) ? 0 : v; return r.toFixed(d).replace('-', '−').replace('.', ','); };
+const signed = (v,d=0) => { const t = fmt(v,d); return (v>0 && !/^0(,0+)?$/.test(t) && !t.startsWith('−') ? '+' : '') + t; };
+
+/* ---------- Estructura de cada columna ---------- */
+function buildTech(id, title, sub){
+  $(id).innerHTML = `
+    <header><h2>${title}</h2><span class="sub">${sub}</span></header>
+    <svg id="${id}-link" viewBox="0 0 560 150" role="img" aria-label="Esquema del enlace ${title}"></svg>
+    <div class="prod" id="${id}-prod"></div>
+    <div><h3 style="margin-bottom:6px">Cadena de control</h3><ol class="chain" id="${id}-chain"></ol></div>
+    <h3 id="${id}-vt"></h3>
+    <div class="valves">
+      <svg id="${id}-bridge" viewBox="0 0 330 250" role="img" aria-label="Puente del convertidor con la corriente de cada rama"></svg>
+      <div class="charts">
+        <div class="clegend" id="${id}-leg"></div>
+        <h4 id="${id}-t0"></h4><svg id="${id}-w0" viewBox="0 0 360 74"></svg>
+        <h4 id="${id}-t1"></h4><svg id="${id}-w1" viewBox="0 0 360 96"></svg>
+        <h4 id="${id}-t2"></h4><svg id="${id}-w2" viewBox="0 0 360 96"></svg>
+      </div>
+    </div>
+    <div class="readout" id="${id}-ro"></div>
+    <div><h3 style="margin-bottom:6px">Últimos 20 segundos (en por unidad)</h3>
+      <div class="clegend" id="${id}-tleg"></div>
+      <svg id="${id}-trend" viewBox="0 0 560 150" role="img" aria-label="Tensión DC, corriente DC y potencia en el tiempo"></svg></div>
+    <p class="note" id="${id}-note"></p>`;
+  $(id+'-prod').innerHTML = [['V<sub>DC</sub>','s4','v'],['I<sub>DC</sub>','s5','i'],['P','s6','p']].map(([k,c,key])=>
+    `<span class="k">${k}</span><span class="track"><i id="${id}-b${key}" style="background:var(--${c})"></i></span><span class="v" id="${id}-x${key}"></span>`).join('');
+  $(id+'-chain').innerHTML = ['Consigna','','',''].map((k,i)=>`<li><span class="k" id="${id}-ck${i}">${k}</span><span class="v" id="${id}-cv${i}"></span></li>`).join('');
+  $(id+'-tleg').innerHTML = [['s4','V DC'],['s5','I DC'],['s6','P']].map(([c,n])=>`<span><i style="border-color:var(--${c})"></i>${n}</span>`).join('');
+  buildLink(id); buildBridge(id);
+  for(const k of [0,1,2]) bindHover($(id+'-w'+k));
+}
+
+/* ---------- Esquema del enlace ---------- */
+const LK = {};
+function buildLink(id){
+  const s=$(id+'-link'), g={};
+  el('rect',{x:6,y:50,width:70,height:50,rx:6,class:'box'},s); el('text',{x:41,y:79,class:'tb','text-anchor':'middle'},s,'Red A');
+  el('rect',{x:484,y:50,width:70,height:50,rx:6,class:'box'},s); el('text',{x:519,y:79,class:'tb','text-anchor':'middle'},s,'Red B');
+  el('path',{d:'M76 75 H110 M450 75 H484',class:'wire'},s);
+  el('path',{d:'M160 88 H400',class:'wire'},s);
+  el('path',{d:'M160 62 H400',class:'pole'},s);
+  g.dash = el('path',{d:'M160 62 H400',class:'flowdash'},s);
+  g.arrow = el('polygon',{points:'-9,-7 9,0 -9,7',fill:'var(--dc)'},s);
+  for(const [n,x] of [['A',110],['B',400]]){
+    g['c'+n] = el('rect',{x,y:50,width:50,height:50,class:'conv'},s);
+    el('line',{x1:x,y1:100,x2:x+50,y2:50,stroke:'var(--dc)','stroke-width':1.5},s);
+    el('text',{x:x+25,y:42,class:'ts','text-anchor':'middle'},s,'Estación '+n);
+    g['r'+n+'1'] = el('text',{x:x+25,y:116,class:'tb','text-anchor':'middle'},s);
+    g['r'+n+'2'] = el('text',{x:x+25,y:131,class:'ts','text-anchor':'middle'},s);
+    g['r'+n+'3'] = el('text',{x:x+25,y:145,class:'ts','text-anchor':'middle'},s);
+    const gx = n==='A'?41:519;
+    g['q'+n+'1'] = el('text',{x:gx,y:116,class:'ts','text-anchor':'middle'},s);
+    g['q'+n+'2'] = el('text',{x:gx,y:131,class:'tm','text-anchor':'middle'},s);
+  }
+  g.p = el('text',{x:280,y:18,class:'tm','text-anchor':'middle',style:'font-size:14px'},s);
+  g.v = el('text',{x:280,y:52,class:'tm','text-anchor':'middle'},s);
+  g.i = el('text',{x:280,y:106,class:'tm','text-anchor':'middle'},s);
+  LK[id]=g;
+}
+function renderLink(id, d){
+  const g=LK[id];
+  g.p.textContent = Math.abs(d.MW)<0.5 ? 'P = 0 MW · sin transferencia' : `P = ${fmt(Math.abs(d.MW))} MW · ${d.MW>0?'A → B':'B → A'}`;
+  g.v.textContent = d.vText; g.i.textContent = d.iText;
+  const mov = Math.abs(d.I)>0.005;
+  g.dash.style.display = mov?'':'none'; g.dash.setAttribute('class','flowdash '+(d.I>=0?'fwd':'rev'));
+  g.arrow.style.display = mov?'':'none'; g.arrow.setAttribute('transform',`translate(232 62) rotate(${d.I>=0?0:180})`);
+  for(const n of ['A','B']){
+    g['c'+n].setAttribute('class','conv'+(S.view===n?' view':''));
+    d.roles[n].forEach((t,k)=>g['r'+n+(k+1)].textContent=t);
+    g['q'+n+'1'].textContent = d.q[n][0]; g['q'+n+'2'].textContent = d.q[n][1];
+  }
+}
+
+/* ---------- Puente ---------- */
+const BR = {};
+const LX=[96,176,256], AY=[112,125,138], YU=64, YL=186, YT=30, YB=220;
+function buildBridge(id){
+  const s=$(id+'-bridge'), g={leg:[],sym:[],arr:[],val:[],ac:[]}, lcc = id==='lcc';
+  for(let j=0;j<3;j++){
+    g.ac[j] = el('path',{d:`M22 ${AY[j]} H${LX[j]}`,class:'leg'},s);
+    el('text',{x:8,y:AY[j]+4,class:'tb'},s,PH[j]);
+  }
+  for(let j=0;j<3;j++) for(const up of [1,0]){
+    const k=j*2+(up?0:1), x=LX[j], y=up?YU:YL;
+    g.leg[k] = el('path',{d: up?`M${x} ${AY[j]} V${YT}`:`M${x} ${YB} V${AY[j]}`,class:'leg'},s);
+    g.sym[k] = lcc
+      ? el('path',{d:`M${x-10} ${y+9} H${x+10} L${x} ${y-9} Z M${x-10} ${y-9} H${x+10}`,class:'vsym'},s)
+      : el('rect',{x:x-9,y:y-14,width:18,height:28,rx:2,class:'vsym'},s);
+    g.arr[k] = el('polygon',{points:'-5,5 5,5 0,-6'},s);
+    g.val[k] = el('text',{x:x+15,y:y+4,class:'tm',style:'font-size:11px'},s);
+    const name = lcc ? 'V'+(up?LCC_UP[j]:LCC_LO[j]) : PH[j]+(up?'+':'−');
+    el('text',{x:x+15,y:y-9,class:'ts'},s,name);
+    el('circle',{cx:x,cy:AY[j],r:3,fill:'var(--ink)'},s);
+  }
+  el('path',{d:`M${LX[0]} ${YT} H304`,class:'bar'},s); el('path',{d:`M${LX[0]} ${YB} H304`,class:'bar'},s);
+  g.top = el('text',{x:310,y:YT+5,class:'tm',style:'font-size:15px'},s); g.bot = el('text',{x:310,y:YB+5,class:'tm',style:'font-size:15px'},s);
+  g.darr = el('polygon',{points:'-7,-6 7,0 -7,6',fill:'var(--dc)'},s);
+  g.cap = el('text',{x:165,y:246,class:'ts','text-anchor':'middle'},s);
+  BR[id]=g;
+}
+function renderBridge(id, cur, top, bot, idc, cap){
+  const g=BR[id];
+  for(let j=0;j<3;j++){
+    for(const up of [1,0]){ const k=j*2+(up?0:1), i=cur[k], on=Math.abs(i)>0.02, c=`var(--${PC[j]})`;
+      g.leg[k].style.stroke = on?c:''; g.leg[k].style.strokeWidth = on?(1.5+5*Math.min(Math.abs(i),2.5)/2.5).toFixed(1):1.5;
+      g.sym[k].setAttribute('style', on?`fill:${c};stroke:${c};fill-opacity:${(0.25+0.75*Math.min(Math.abs(i),2)/2).toFixed(2)}`:'');
+      const x=LX[j]-20, y=up?YU:YL;
+      g.arr[k].style.display = on?'':'none'; g.arr[k].setAttribute('fill',c);
+      g.arr[k].setAttribute('transform',`translate(${x} ${y}) rotate(${i>=0?0:180})`);
+      g.val[k].textContent = on?fmt(i,1):'0'; g.val[k].setAttribute('style','font-size:11px'+(on?'':';fill:var(--off)')); }
+    const ia=cur[j*2]-cur[j*2+1], on=Math.abs(ia)>0.02;
+    g.ac[j].style.stroke = on?`var(--${PC[j]})`:''; g.ac[j].style.strokeWidth = on?(1.5+4*Math.min(Math.abs(ia),2.5)/2.5).toFixed(1):1.5;
+  }
+  g.top.textContent=top; g.bot.textContent=bot; g.cap.textContent=cap;
+  g.darr.style.display = Math.abs(idc)>0.01?'':'none';
+  g.darr.setAttribute('transform',`translate(286 ${YT}) rotate(${idc>=0?0:180})`);
+}
+
+/* ---------- Formas de onda sobre un ciclo ---------- */
+const W = {}, TH = Array.from({length:181},(_,i)=>i*2);
+function drawWave(id, series, y0, y1, ticks, opt={}){
+  const svg=$(id), vb=svg.viewBox.baseVal, Wd=vb.width, H=vb.height, L=30, R=6, T=10, B=14;
+  svg.innerHTML='';
+  const X=v=>L+(Wd-L-R)*v/360, Y=v=>T+(H-T-B)*(y1-v)/(y1-y0);
+  if(opt.shade) el('rect',{x:X(opt.shade[0]),y:T,width:Math.max(0,X(opt.shade[1])-X(opt.shade[0])),height:H-T-B,class:'shade'},svg);
+  for(const v of ticks){ el('line',{x1:L,x2:Wd-R,y1:Y(v),y2:Y(v),class:v===0?'zero':'gridl'},svg);
+    el('text',{x:L-4,y:Y(v)+3,class:'axt','text-anchor':'end'},svg,fmt(v,0)); }
+  for(let v=0; v<=360; v+=60) el('text',{x:X(v),y:H-3,class:'axt','text-anchor':v===360?'end':'middle'},svg,v+'°');
+  
+  for(const s of series){
+    const d=s.data.map((v,i)=>(i?'L':'M')+X(TH[i]).toFixed(1)+' '+Y(v).toFixed(1)).join('');
+    el('path',{d,fill:'none',stroke:`var(--${s.c})`,'stroke-width':2,'stroke-dasharray':s.dash?'5 3':'none','stroke-linejoin':'round'},svg);
+    if(s.label){ let m=0; s.data.forEach((v,i)=>{ if(Math.abs(v)>Math.abs(s.data[m])) m=i; });
+      if(Math.abs(s.data[m])>0.05*(y1-y0)){ const lx=Math.min(Wd-R-8,Math.max(L+8,X(TH[m])+(s.lx||0)));
+        el('text',{x:lx,y:Y(s.data[m])+(s.data[m]>=0?-3:10),class:'dl','text-anchor':'middle'},svg,s.label); } }
+  }
+  if(opt.shade && opt.shadeLabel) el('text',{x:Math.min(Wd-R-50,X(opt.shade[1])+4),y:H-B-4,class:'dl'},svg,opt.shadeLabel);
+  const cross=el('line',{y1:T,y2:H-B,class:'cross'},svg);
+  const dots=series.map(s=>el('circle',{r:3.5,fill:`var(--${s.c})`,stroke:'var(--surface)','stroke-width':1.5},svg));
+  W[id]={X,Y,cross,dots,series,L,span:Wd-L-R,Wd};
+}
+function moveCursor(id){
+  const w=W[id]; if(!w) return; const x=w.X(S.theta), i=Math.round(S.theta/2)%181;
+  w.cross.setAttribute('x1',x); w.cross.setAttribute('x2',x);
+  w.series.forEach((s,k)=>{ w.dots[k].setAttribute('cx',x); w.dots[k].setAttribute('cy',w.Y(s.data[i])); });
+}
+function bindHover(svg){
+  const mv=e=>{ const w=W[svg.id]; if(!w) return; const r=svg.getBoundingClientRect();
+    const x=(e.clientX-r.left)*w.Wd/r.width; S.theta=Math.max(0,Math.min(359,Math.round((x-w.L)/w.span*360))); hover=true; };
+  svg.addEventListener('pointermove',mv); svg.addEventListener('pointerdown',mv);
+  svg.addEventListener('pointerleave',()=>{ hover=false; });
+}
+
+/* ---------- Tendencia ---------- */
+function drawTrend(id, h){
+  const svg=$(id+'-trend'), Wd=560, H=150, L=34, R=96, T=8, B=18; svg.innerHTML='';
+  const X=i=>L+(Wd-L-R)*(i+HIST.n-h.p.length)/(HIST.n-1), Y=v=>T+(H-T-B)*(1.25-v)/2.5;
+  for(const v of [-1,0,1]){ el('line',{x1:L,x2:Wd-R,y1:Y(v),y2:Y(v),class:v===0?'zero':'gridl'},svg);
+    el('text',{x:L-5,y:Y(v)+3,class:'axt','text-anchor':'end'},svg,signed(v)); }
+  for(const [t,lab] of [[0,'−20 s'],[HIST.n/2,'−10 s'],[HIST.n-1,'ahora']])
+    el('text',{x:L+(Wd-L-R)*t/(HIST.n-1),y:H-4,class:'axt','text-anchor':t===0?'start':t===HIST.n-1?'end':'middle'},svg,lab);
+  const ends=[];
+  for(const [key,c,name] of [['v','s4','V DC'],['i','s5','I DC'],['p','s6','P']]){
+    const a=h[key]; if(!a.length) continue;
+    el('path',{d:a.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join(''),fill:'none',stroke:`var(--${c})`,'stroke-width':2,'stroke-linejoin':'round'},svg);
+    const last=a[a.length-1]; el('circle',{cx:X(a.length-1),cy:Y(last),r:4,fill:`var(--${c})`,stroke:'var(--surface)','stroke-width':2},svg);
+    ends.push({y:Y(last),t:`${name} ${signed(last,2)}`});
+  }
+  ends.sort((a,b)=>a.y-b.y);
+  for(let i=1;i<ends.length;i++) if(ends[i].y-ends[i-1].y<12) ends[i].y=ends[i-1].y+12;
+  for(const e of ends) el('text',{x:Wd-R+9,y:e.y+4,class:'t',style:'font-size:11px'},svg,e.t);
+}
+
+/* ---------- Render por tecnología ---------- */
+function bars(id, v, i, p, tv, ti, tp){
+  for(const [k,x,t] of [['v',v,tv],['i',i,ti],['p',p,tp]]){ const b=$(id+'-b'+k), w=Math.min(50,Math.abs(x)/1.15*50);
+    b.style.left = (x>=0?50:50-w)+'%'; b.style.width = w+'%'; $(id+'-x'+k).textContent=t; }
+}
+function chain(id, items){ items.forEach(([k,v],i)=>{ if(k) $(id+'-ck'+i).textContent=k; $(id+'-cv'+i).textContent=v; }); }
+const rampTxt = () => S.ramp ? S.ramp+' MW/s' : 'escalón';
+let keyL='', keyV='';
+
+function renderLCC(){
+  const st=lccState(pRef/1000, S.uB/100), br=st[S.view], other=st[S.view==='A'?'B':'A'], Id=st.kA;
+  const role = b => b.alpha<90 ? 'Rectificador' : 'Inversor';
+  const ctl = (b,name) => { const sending = (name==='A')===st.fwd;
+    return [role(b), sending?'regula la corriente':'regula la tensión', b.alpha<90?`α = ${fmt(b.alpha)}°`:`α = ${fmt(b.alpha)}° · γ = ${fmt(b.gamma)}°`]; };
+  renderLink('lcc',{MW:st.MW, I:st.Id, vText:`${signed(st.kV)} kV`, iText:`${fmt(Id,2)} kA →`,
+    roles:{A:ctl(st.A,'A'),B:ctl(st.B,'B')}, q:{A:['consume',fmt(st.A.Q)+' Mvar'],B:['consume',fmt(st.B.Q)+' Mvar']}});
+  bars('lcc', st.VA, st.Id, st.P, `${signed(st.kV)} kV`, `${signed(Id,2)} kA`, `${signed(st.MW)} MW`);
+  const cur=[]; for(let j=0;j<3;j++){ cur.push(lccValve(LCC_UP[j],S.theta,br,Id), lccValve(LCC_LO[j],S.theta,br,Id)); }
+  const on=[1,2,3,4,5,6].filter(k=>lccValve(k,S.theta,br,Id)>0.02);
+  chain('lcc',[[null,`${signed(S.set)} MW · ${rampTxt()}`],['Control de corriente',`I ref = ${fmt(Id,2)} kA`],
+    ['Ángulo de disparo',`α = ${fmt(br.alpha,1)}° · μ = ${fmt(br.mu,1)}°`],['Disparo de tiristores',`conducen ${on.map(k=>'V'+k).join(', ')}`]]);
+  const vb = S.view==='A' ? st.VA : -st.VB;
+  renderBridge('lcc', cur, vb>=0?'+':'−', vb>=0?'−':'+', Id, `Estación ${S.view} · ${role(br).toLowerCase()} · ${fmt(Math.abs(vb)*LCC.Vn)} kV`);
+  $('lcc-vt').textContent = `Válvulas de la estación ${S.view}: corriente por tiristor (kA)`;
+  const key=[st.Id.toFixed(4),br.alpha.toFixed(2),br.mu.toFixed(2)].join('|');
+  if(key!==keyL){ keyL=key;
+    const fire=30+br.alpha;
+    drawWave('lcc-w0', PH.map((p,j)=>({c:PC[j],label:p,data:TH.map(t=>Math.sin((t-120*j)*D2R))})), -1.15,1.15,[-1,0,1],
+      {shade:[30,Math.min(360,fire)], shadeLabel:`α = ${fmt(br.alpha)}°`});
+    drawWave('lcc-w1', LCC_UP.map((k,j)=>({c:PC[j],label:'V'+k,lx:14,data:TH.map(t=>lccValve(k,t,br,Id))})), -2.6,2.6,[-2,0,2]);
+    drawWave('lcc-w2', LCC_LO.map((k,j)=>({c:PC[j],label:'V'+k,lx:14,data:TH.map(t=>lccValve(k,t,br,Id))})), -2.6,2.6,[-2,0,2]);
+    $('lcc-t0').textContent='Tensiones de fase de la red (pu) y retardo de disparo α';
+    $('lcc-t1').textContent='Válvulas superiores V1, V3, V5 (kA)'; $('lcc-t2').textContent='Válvulas inferiores V4, V6, V2 (kA)';
+    $('lcc-leg').innerHTML = PH.map((p,j)=>`<span><i style="border-color:var(--${PC[j]})"></i>fase ${p}</span>`).join('');
+  }
+  $('lcc-ro').textContent = `ωt = ${fmt(S.theta)}° · `+[0,1,2].map(j=>`V${LCC_UP[j]} ${fmt(cur[j*2],2)}`).join(' · ')+' · '+[0,1,2].map(j=>`V${LCC_LO[j]} ${fmt(cur[j*2+1],2)}`).join(' · ')+' kA. Nunca negativas: un tiristor conduce en un solo sentido.';
+  let msg, cls='';
+  if(st.limited==='gamma'){ cls='warn'; msg=`Con la red B al ${S.uB} % el inversor llega a su margen mínimo (γ = ${LCC.gMin}°) y no sostiene la tensión DC: la potencia queda en ${fmt(Math.abs(st.MW))} MW. Una caída más brusca provocaría un fallo de conmutación.`; }
+  else if(st.limited==='alpha'){ cls='warn'; msg=`Con la red B al ${S.uB} % el rectificador llega a su ángulo mínimo (α = ${LCC.aMin}°): no puede dar más tensión DC y la potencia queda en ${fmt(Math.abs(st.MW))} MW.`; }
+  else if(Math.abs(pRef)<99.5) msg=`Por debajo de 100 MW el LCC mantiene su corriente mínima (${fmt(LCC.Imin*LCC.In,1)} kA) y regula con la tensión. Al cruzar 0 MW la tensión cambia de polaridad y las estaciones intercambian papeles; la corriente no cambia de sentido. Aun sin transferir potencia, cada estación consume reactiva.`;
+  else msg = st.fwd ? 'La estación A rectifica con α pequeño y B invierte con α cercano a 150°. La corriente DC va de A hacia B y la tensión es positiva.'
+                    : 'Mismo sentido de corriente que antes, pero con tensión negativa: ahora B rectifica y A invierte. Los bloques de corriente de cada válvula se desplazaron dentro del ciclo.';
+  $('lcc-note').className='note '+cls; $('lcc-note').textContent=msg;
+  return st;
+}
+
+function renderVSC(){
+  const st=vscState(pRef/1000, S.q/1000, S.uB/100, S.view), s=st[S.view];
+  const roles = {A:['Controla P', st.A.pac>=0?'toma P de la red A':'entrega P a la red A', `δ = ${signed(st.A.delta,1)}°`],
+                 B:['Controla V DC', st.B.pac>=0?'toma P de la red B':'entrega P a la red B', `δ = ${signed(st.B.delta,1)}°`]};
+  const qt = n => ['Q a la red', signed(st[n].q*1000)+' Mvar'];
+  renderLink('vsc',{MW:st.MW, I:st.Idc, vText:`+${fmt(st.kV)} kV`, iText: Math.abs(st.kA)<0.005?'0,00 kA':`${fmt(Math.abs(st.kA),2)} kA ${st.kA>0?'→':'←'}`,
+    roles, q:{A:qt('A'),B:qt('B')}});
+  bars('vsc', st.VA, st.Idc, st.P, `+${fmt(st.kV)} kV`, `${signed(st.kA,2)} kA`, `${signed(st.MW)} MW`);
+  const cur=[]; for(let j=0;j<3;j++){ cur.push(vscArm(true,j,S.theta,s), vscArm(false,j,S.theta,s)); }
+  chain('vsc',[[null,`${signed(S.set)} MW · ${rampTxt()}`],['Control de P y Q',`P ${signed(-s.pac*1000)} · Q ${signed(s.q*1000)}`],
+    ['Control de corriente',`δ = ${signed(s.delta,1)}° · amplitud ${fmt(s.amp,2)}`],['Modulación de IGBT',`índice m = ${fmt(s.m,2)}`]]);
+  renderBridge('vsc', cur, '+', '−', s.IdcExp, `Estación ${S.view} · ${s.pac>=0?'rectifica':'invierte'} · ${fmt(st.kV)} kV`);
+  $('vsc-vt').textContent = `Ramas de la estación ${S.view}: corriente por rama (kA)`;
+  const key=[s.IdcExp.toFixed(4),s.Ipk.toFixed(4),s.phiI.toFixed(4),s.delta.toFixed(3),s.amp.toFixed(4),s.u].join('|');
+  if(key!==keyV){ keyV=key;
+    drawWave('vsc-w0', [{c:'s1',label:'red',data:TH.map(t=>s.u*Math.sin(t*D2R))},
+                        {c:'s1',dash:true,data:TH.map(t=>s.amp*Math.sin((t+s.delta)*D2R))}], -1.15,1.15,[-1,0,1]);
+    drawWave('vsc-w1', PH.map((p,j)=>({c:PC[j],label:p+'+',data:TH.map(t=>vscArm(true,j,t,s))})), -2.6,2.6,[-2,0,2]);
+    drawWave('vsc-w2', PH.map((p,j)=>({c:PC[j],label:p+'−',data:TH.map(t=>vscArm(false,j,t,s))})), -2.6,2.6,[-2,0,2]);
+    $('vsc-t0').textContent='Fase a: tensión de la red y tensión que sintetiza el convertidor (pu)';
+    $('vsc-t1').textContent='Ramas superiores a+, b+, c+ (kA)'; $('vsc-t2').textContent='Ramas inferiores a−, b−, c− (kA)';
+    $('vsc-leg').innerHTML = PH.map((p,j)=>`<span><i style="border-color:var(--${PC[j]})"></i>fase ${p}</span>`).join('')+'<span><i class="dash" style="border-color:var(--s1)"></i>tensión del convertidor</span>';
+  }
+  $('vsc-ro').textContent = `ωt = ${fmt(S.theta)}° · `+[0,1,2].map(j=>`${PH[j]}+ ${signed(cur[j*2],2)}`).join(' · ')+' · '+[0,1,2].map(j=>`${PH[j]}− ${signed(cur[j*2+1],2)}`).join(' · ')+` kA. Componente continua de cada rama: ${signed(s.IdcExp/3,2)} kA.`;
+  let msg, cls='';
+  if(st.limited){ cls='warn'; msg=`Con la red B al ${S.uB} % la corriente de las válvulas de B llega a su límite: la potencia queda en ${fmt(Math.abs(st.MW))} MW. El convertidor sigue controlando; no depende de la red para conmutar.`; }
+  else if(s.qLimited){ cls='warn'; msg=`La reactiva pedida no cabe con esta potencia activa: se recorta a ${signed(s.q*1000)} Mvar para respetar la corriente máxima de las válvulas.`; }
+  else if(Math.abs(pRef)<0.5) msg='Con 0 MW la corriente DC es cero y las ramas no llevan corriente activa. La tensión DC sigue en su valor: el enlace está listo para transmitir en cualquier sentido.';
+  else msg = st.Idc>0 ? 'La tensión DC es fija y la corriente va de A hacia B. Cada rama lleva un tercio de la corriente DC más media corriente de fase, y cambia de signo dentro del ciclo.'
+                      : 'La tensión DC no cambió. Se invirtió la corriente DC, y con ella la componente continua de cada rama y la fase de la tensión sintetizada (δ cambió de signo).';
+  $('vsc-note').className='note '+cls; $('vsc-note').textContent=msg;
+  return st;
+}
+
+/* ---------- Bucle ---------- */
+let lastT=performance.now(), acc=0;
+function frame(now){
+  const dt=Math.min(0.1,(now-lastT)/1000); lastT=now;
+  if(S.playing && !hover) S.theta=(S.theta+SPEED*dt)%360;
+  const d=S.set-pRef; if(d!==0){ if(S.ramp===0 || Math.abs(d)<=S.ramp*dt) pRef=S.set; else pRef+=Math.sign(d)*S.ramp*dt; }
+  const l=renderLCC(), v=renderVSC();
+  for(const id of ['lcc','vsc']) for(const k of [0,1,2]) moveCursor(id+'-w'+k);
+  $('th').value=Math.round(S.theta); $('tho').textContent=fmt(S.theta)+'°';
+  acc+=dt;
+  if(acc>=HIST.dt){ acc=0;
+    const push=(h,a,b,c)=>{ h.v.push(a); h.i.push(b); h.p.push(c); for(const k of ['v','i','p']) if(h[k].length>HIST.n) h[k].shift(); };
+    push(HIST.l,l.VA,l.Id,l.P); push(HIST.v,v.VA,v.Idc,v.P);
+    drawTrend('lcc',HIST.l); drawTrend('vsc',HIST.v);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Controles ---------- */
+function sync(){
+  $('set').value=S.set; $('seto').textContent=signed(S.set)+' MW';
+  $('ub').value=S.uB; $('ubo').textContent=S.uB+' %';
+  $('q').value=S.q; $('qo').textContent=signed(S.q)+' Mvar';
+  $('play').textContent = S.playing ? 'Pausar el ciclo' : 'Reproducir el ciclo';
+  document.querySelectorAll('#ramps button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===S.ramp)));
+  document.querySelectorAll('#views button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===S.view)));
+}
+function buildControls(){
+  RAMPS.forEach(([v,t])=>{ const b=document.createElement('button'); b.type='button'; b.textContent=t; b.dataset.v=v;
+    b.addEventListener('click',()=>{ S.ramp=v; sync(); }); $('ramps').appendChild(b); });
+  ['A','B'].forEach(v=>{ const b=document.createElement('button'); b.type='button'; b.textContent=v; b.dataset.v=v;
+    b.addEventListener('click',()=>{ S.view=v; sync(); }); $('views').appendChild(b); });
+  $('set').addEventListener('input',e=>{ S.set=+e.target.value; sync(); });
+  $('ub').addEventListener('input',e=>{ S.uB=+e.target.value; sync(); });
+  $('q').addEventListener('input',e=>{ S.q=+e.target.value; sync(); });
+  $('th').addEventListener('input',e=>{ S.theta=+e.target.value; S.playing=false; sync(); });
+  $('play').addEventListener('click',()=>{ S.playing=!S.playing; sync(); });
+  $('rev').addEventListener('click',()=>{ S.set = S.set===0 ? -1000 : -S.set; sync(); });
+  $('zero').addEventListener('click',()=>{ S.set=0; sync(); });
+  $('full').addEventListener('click',()=>{ S.set=1000; sync(); });
+}
+
+buildTech('lcc','LCC','tiristores · conmutado por la red · monopolo de 500 kV');
+buildTech('vsc','VSC','IGBT · convertidor modular multinivel · ±320 kV');
+buildControls(); sync(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
